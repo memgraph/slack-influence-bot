@@ -1,4 +1,5 @@
 docopt==0.6.2
 slack-sdk==3.9.1
+slack-bolt==1.8.0
 kafka-python==2.0.2
 spacy==3.1.2

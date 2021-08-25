@@ -58,7 +58,7 @@ def _get_slack_app(bot_token: str, event_handler=None):
     @app.command("/help-me-out")
     def handle_some_command(ack, body, say):
         ack()
-        logger.info(f"Command /help-me-out: {json.dumps(body}")
+        logger.info(f"Command /help-me-out: {json.dumps(body)}")
         say("I will help you out!")
 
     def _handle_event(event):
