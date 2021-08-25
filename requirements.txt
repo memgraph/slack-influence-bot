@@ -1,3 +1,4 @@
-slackclient==2.9.3
-spacy==3.1.2
 docopt==0.6.2
+slack-sdk==3.9.1
+kafka-python==2.0.2
+spacy==3.1.2

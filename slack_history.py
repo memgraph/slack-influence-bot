@@ -18,24 +18,41 @@ Usage:
 
 Arguments:
     -h --help   Show this screen
-    -n=LIMIT    Number of messages to fetch [default: 50]
+    -n=LIMIT    Number of messages to fetch, max 1000 [default: 50]
 """
 
 import os
 import json
+import time
 from typing import Dict, Any
-from slack import WebClient
+from slack_sdk import WebClient
 
 slack_client = WebClient(os.environ["SLACK_BOT_TOKEN"])
 
+
+def _wrap_rate_limit(func, *args, **kwargs):
+    try:
+        return func(*args, **kwargs)
+    except SlackApiError as e:
+        if e.response["error"] != "ratelimited":
+            raise e
+
+        # The `Retry-After` header will tell you how long to wait before retrying
+        delay = int(e.response.headers['Retry-After'])
+        time.sleep(delay)
+        return func(*args, **kwargs)
+
+
 def get_channels():
-    response = slack_client.conversations_list()
+    response = slack_client.conversations_list(types="public_channel,private_channel")
     for channel in response["channels"]:
         if channel["is_member"]:
             yield {
                 "id" : channel["id"],
-                "name" : channel["name"]
+                "name" : channel["name"],
+                "is_private": channel["is_private"]
             }
+
 
 def get_users():
     response = slack_client.users_list()
@@ -53,7 +70,7 @@ def get_users():
 
 
 def get_channel_events(channel_id: str, limit: int):
-    response_messages = slack_client.conversations_history(channel=channel_id, limit=limit)
+    response_messages = _wrap_rate_limit(slack_client.conversations_history, channel=channel_id, limit=limit)
     for message in response_messages["messages"]:
         if not message.get("user"):
             continue
@@ -62,7 +79,7 @@ def get_channel_events(channel_id: str, limit: int):
         yield from _get_reaction_events(channel_id, message)
 
         if message.get("reply_count", 0) > 0:
-            response_replies = slack_client.conversations_replies(
+            response_replies = _wrap_rate_limit(slack_client.conversations_replies,
                 channel=channel_id,
                 ts=message["ts"],
                 limit=limit)
@@ -122,6 +139,7 @@ def main(args: Dict[str, Any]):
             for event in get_channel_events(channel["id"], limit=int(args["-n"])):
                 print(json.dumps(event))
         return
+
 
 if __name__ == "__main__":
     from docopt import docopt
