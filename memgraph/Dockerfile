@@ -1,5 +1,7 @@
 FROM memgraph/memgraph-mage
 
+USER root
+
 # Install the NLP libraries
 RUN python3 -m pip install -U pip setuptools wheel && \
     python3 -m pip install -U spacy
@@ -9,4 +11,5 @@ RUN python3 -m spacy download en_core_web_sm
 
 # Copy the local query modules
 COPY query_modules/ /usr/lib/memgraph/query_modules/
+
 USER memgraph

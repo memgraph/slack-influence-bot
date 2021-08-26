@@ -12,6 +12,8 @@ services:
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9094
+      - MEMGRAPH_HOST=memgraph
+      - MEMGRAPH_PORT=7687
 
   zookeeper:
     image: bitnami/zookeeper:3.7

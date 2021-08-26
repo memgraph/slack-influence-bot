@@ -12,6 +12,8 @@ variables:
     - KAFKA_BOOTSTRAP_SERVERS
     - SLACK_BOT_TOKEN
     - SLACK_APP_TOKEN
+    - MEMGRAPH_HOST
+    - MEMGRAPH_PORT
 
 Usage:
     slack_stream.py [KAFKA_TOPIC]
@@ -28,6 +30,7 @@ import sys
 import json
 import logging
 from slack_bolt import App
+from gqlalchemy import Memgraph
 from kafka import KafkaProducer
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -36,6 +39,11 @@ logger = logging.getLogger("slack_bot")
 logger.setLevel(logging.INFO)
 
 DEFAULT_KAFKA_PRODUCER_BATCH_WAIT_MS = 1000
+
+COMMAND_MESSAGE_INFLUENCE = "/influence-the-message"
+COMMAND_CHANNEL_INFLUENCE = "/influence-the-channel"
+COMMAND_PERSONAL_INFLUENCE = "/influence-me"
+COMMAND_RELATIONSHIP_INFLUENCE = "/influence-you-and-me"
 
 
 def _get_required_env(name: str):
@@ -52,14 +60,49 @@ def _get_kafka_producer(servers: str, batch_wait_ms=DEFAULT_KAFKA_PRODUCER_BATCH
         linger_ms=batch_wait_ms)
 
 
-def _get_slack_app(bot_token: str, event_handler=None):
+def _get_slack_app(bot_token: str, memgraph, event_handler=None):
     app = App(token=bot_token)
 
-    @app.command("/help-me-out")
-    def handle_some_command(ack, body, say):
+    def _get_message_influence_text(event):
+        message = event["text"]
+        results = memgraph.execute_and_fetch(f"""
+            CALL tokenizer.tokenize("{message}") YIELD *;
+        """)
+
+        return f"You want me to influence this? {message}: {list(results)}"
+
+    def _handle_command(event):
+        logger.info(f"New command: {json.dumps(event)}")
+        text = f"What the hell are you doing? I have no clue what to do for {event['command']}. Sorry."
+
+        if event["command"] == COMMAND_MESSAGE_INFLUENCE:
+            text = _get_message_influence_text(event)
+
+        app.client.chat_postEphemeral(
+            channel=event["channel_id"],
+            user=event["user_id"],
+            text=text)
+
+    # Body contains: channel_id, channel_name, user_id, user_name, text, command
+    @app.command(COMMAND_MESSAGE_INFLUENCE)
+    def handle_message_influence(ack, body):
         ack()
-        logger.info(f"Command /help-me-out: {json.dumps(body)}")
-        say("I will help you out!")
+        _handle_command(body)
+
+    @app.command(COMMAND_CHANNEL_INFLUENCE)
+    def handle_channel_influence(ack, body):
+        ack()
+        _handle_command(body)
+
+    @app.command(COMMAND_PERSONAL_INFLUENCE)
+    def handle_personal_influence(ack, body):
+        ack()
+        _handle_command(body)
+
+    @app.command(COMMAND_RELATIONSHIP_INFLUENCE)
+    def handle_relationship_influence(ack, body):
+        ack()
+        _handle_command(body)
 
     def _handle_event(event):
         logger.info(f"New event: {json.dumps(event)}")
@@ -81,14 +124,47 @@ def _get_slack_app(bot_token: str, event_handler=None):
     return app
 
 
+def setup_memgraph(memgraph, kafka_topic):
+    stream_name = 'slackstream'
+    indexes = [
+        'User(uuid)',
+        'Channel(uuid)',
+        'Message(uuid)',
+        'Word(value)',
+    ]
+    for index in indexes:
+        memgraph.execute(f"CREATE INDEX ON :{index};")
+
+    results = memgraph.execute_and_fetch("SHOW STREAMS")
+    stream = next((result for result in results if result["name"] == stream_name), None)
+    if not stream:
+        memgraph.execute(f"""
+            CREATE STREAM {stream_name}
+            TOPICS {kafka_topic}
+            TRANSFORM transform.transformation
+            BATCH_INTERVAL 100 BATCH_SIZE 10
+        """)
+
+    if not stream or not stream["is running"]:
+        memgraph.execute(f"START STREAM {stream_name}")
+
+
 def main(args):
     kafka_topic = args.get("KAFKA_TOPIC") or _get_required_env("KAFKA_TOPIC")
     kafka_servers = _get_required_env("KAFKA_BOOTSTRAP_SERVERS")
     slack_bot_token = _get_required_env("SLACK_BOT_TOKEN")
     slack_app_token = _get_required_env("SLACK_APP_TOKEN")
+    memgraph_host = _get_required_env("MEMGRAPH_HOST")
+    memgraph_port = _get_required_env("MEMGRAPH_PORT")
 
+    memgraph = Memgraph(memgraph_host, int(memgraph_port))
+    setup_memgraph(memgraph, kafka_topic)
     producer = _get_kafka_producer(servers=kafka_servers)
-    app = _get_slack_app(slack_bot_token, event_handler=lambda event: producer.send(kafka_topic, event))
+
+    app = _get_slack_app(
+        slack_bot_token,
+        memgraph=memgraph,
+        event_handler=lambda event: producer.send(kafka_topic, event))
     handler = SocketModeHandler(app, slack_app_token)
     handler.start()
 
