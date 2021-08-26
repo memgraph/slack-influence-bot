@@ -13,14 +13,18 @@ def get_message_queries(payload):
     CREATE (u)-[:POSTED]->(:Message { uuid: $msg_uuid, text: $text, total_words: $total_words })-[:IN]->(c);
     """
 
+    channel_data = payload.get("channel_data") or dict()
+    user_data = payload.get("user_data") or dict()
+    user_profile = user_data.get("profile") or dict()
+
     yield mgp.Record(
         query=query,
         parameters={
             "channel_uuid": payload["channel"],
-            "channel_name": payload.get("channel_data", {}).get("name", ""),
+            "channel_name": channel_data.get("name", "(private)"),
             "user_uuid": payload["user"],
-            "user_name": payload.get("user_data", {}).get("name", ""),
-            "user_image": payload.get("user_data", {}).get("profile", {}).get("image", ""),
+            "user_name": user_data.get("name", ""),
+            "user_image": user_profile.get("image", ""),
             "msg_uuid": payload["ts"],
             "text": payload["text"],
             "total_words": total_words
@@ -49,13 +53,16 @@ def get_reaction_added_queries(payload):
     CREATE (u)-[:REACTED_ON { reaction: $reaction }]->(m);
     """
 
+    user_data = payload.get("user_data") or dict()
+    user_profile = user_data.get("profile") or dict()
+
     yield mgp.Record(
         query=query,
         parameters={
             "msg_uuid": payload["item"]["ts"],
             "user_uuid": payload["user"],
-            "user_name": payload.get("user_data", {}).get("name", ""),
-            "user_image": payload.get("user_data", {}).get("profile", {}).get("image", ""),
+            "user_name": user_data.get("name", ""),
+            "user_image": user_profile.get("image", ""),
             "reaction": payload["reaction"]
         })
 
@@ -77,7 +84,7 @@ def get_reaction_removed_queries(payload):
 
 def is_message_payload(payload):
     channel_type = payload.get("channel_type") or ""
-    return payload["type"] == "message" and not message.get("subtype") and channel_type in {"channel", "group", ""}
+    return payload["type"] == "message" and not payload.get("subtype") and channel_type in {"channel", "group", ""}
 
 
 def get_queries(payload):

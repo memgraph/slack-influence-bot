@@ -25,6 +25,7 @@ Arguments:
                  then the environment variable KAFKA_TOPIC needs to be defined.
 """
 
+import re
 import os
 import sys
 import json
@@ -34,6 +35,9 @@ from gqlalchemy import Memgraph
 from kafka import KafkaProducer
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_history import get_channel_by_id, get_user_by_id
+from slack_conversation import get_lazy_response, get_missing_user_response, \
+    get_invalid_self_check_user_response, get_unknown_channel_response, \
+    format_user_id_for_slack_message, format_channel_id_for_slack_message
 
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s]: %(message)s")
 logger = logging.getLogger("slack_bot")
@@ -61,30 +65,99 @@ def _get_kafka_producer(servers: str, batch_wait_ms=DEFAULT_KAFKA_PRODUCER_BATCH
         linger_ms=batch_wait_ms)
 
 
+def get_user_id_from_slack_message(message: str):
+    match = re.match(r'<@(U[A-Z0-9]+|.*?>)', message)
+    if not match or len(match.groups()) < 1:
+        return None
+    return match.groups()[0]
+
+
+def _get_message_influence_text(memgraph, event):
+    message = event["text"]
+    # TODO: Call the recommender here
+    results = memgraph.execute_and_fetch(f"""
+        CALL tokenizer.tokenize("{message}") YIELD *;
+    """)
+
+    return f"You want me to influence this? {list(results)}\n\n_Your original message:_\n{message}"
+
+
+def _get_channel_influence_text(memgraph, event):
+    channel_id = event["channel_id"]
+    results = list(memgraph.execute_and_fetch(f"""
+        MATCH (c:Channel {{ uuid: '{channel_id}' }})
+        RETURN c as channel
+    """))
+    db_channel = results[0].get("channel") if len(results) > 0 else None
+    if not db_channel:
+        return get_unknown_channel_response(channel_id)
+
+    # TODO: Call the communities here
+    # TODO: Find a channel in the database
+    return f"You want to influence the channel {format_channel_id_for_slack_message(channel_id)}"
+
+
+def _get_personal_influence_text(memgraph, event):
+    self_user_id = event["user_id"]
+    # TODO: Call the aggregation of a User here
+    results = list(memgraph.execute_and_fetch(f"""
+        MATCH (u:User {{ uuid: '{self_user_id}' }})-->(m:Message)
+        RETURN count(m) as message_count
+    """))
+    count = results[0].get("message_count", 0) if len(results) > 0 else 0
+
+    return f"You are not so active, you just posted {count} messages"
+
+
+def _get_relationship_influence_text(memgraph, event):
+    message = event["text"]
+    self_user_id = event["user_id"]
+    another_user_id = get_user_id_from_slack_message(message)
+    if not another_user_id:
+        return get_missing_user_response()
+
+    if self_user_id == another_user_id:
+        return get_invalid_self_check_user_response()
+
+    # TODO: Call the Cypher between two Users here
+    return f"Ok ok, I will check the influence between you and {format_user_id_for_slack_message(another_user_id)}"
+
+
 def _get_slack_app(bot_token: str, memgraph, event_handler=None):
     app = App(token=bot_token)
 
-    def _get_message_influence_text(event):
-        message = event["text"]
-        results = memgraph.execute_and_fetch(f"""
-            CALL tokenizer.tokenize("{message}") YIELD *;
-        """)
-
-        return f"You want me to influence this? {message}: {list(results)}"
-
+    # Event contains: channel_id, channel_name, user_id, user_name, text, command
     def _handle_command(event):
         logger.info(f"New command: {json.dumps(event)}")
-        text = f"What the hell are you doing? I have no clue what to do for {event['command']}. Sorry."
-
-        if event["command"] == COMMAND_MESSAGE_INFLUENCE:
-            text = _get_message_influence_text(event)
+        text = ""
+        default_text = f"What the hell are you doing? I have no clue what to do for {event['command']}. Sorry."
 
         app.client.chat_postEphemeral(
             channel=event["channel_id"],
             user=event["user_id"],
-            text=text)
+            text=get_lazy_response())
 
-    # Body contains: channel_id, channel_name, user_id, user_name, text, command
+        try:
+            if event["command"] == COMMAND_MESSAGE_INFLUENCE:
+                text = _get_message_influence_text(memgraph, event)
+
+            if event["command"] == COMMAND_CHANNEL_INFLUENCE:
+                text = _get_channel_influence_text(memgraph, event)
+
+            if event["command"] == COMMAND_PERSONAL_INFLUENCE:
+                text = _get_personal_influence_text(memgraph, event)
+
+            if event["command"] == COMMAND_RELATIONSHIP_INFLUENCE:
+                text = _get_relationship_influence_text(memgraph, event)
+        except Exception as e:
+            logger.error(e)
+            text = "Not good, not good. I think I am not a bot any more, I am Bug bot - a bot with a bug."
+
+        app.client.chat_postEphemeral(
+            channel=event["channel_id"],
+            user=event["user_id"],
+            text=text or default_text)
+
     @app.command(COMMAND_MESSAGE_INFLUENCE)
     def handle_message_influence(ack, body):
         ack()
@@ -113,7 +186,7 @@ def _get_slack_app(bot_token: str, memgraph, event_handler=None):
     @app.event("message")
     def handle_message_event(event):
         processed_event = dict(
-            **event.items(),
+            **event,
             channel_data=get_channel_by_id(event["channel"]),
             user_data=get_user_by_id(event["user"]))
         _handle_event(processed_event)
@@ -121,14 +194,14 @@ def _get_slack_app(bot_token: str, memgraph, event_handler=None):
     @app.event("reaction_added")
     def handle_reaction_added_event(event):
         processed_event = dict(
-            **event.items(),
+            **event,
             user_data=get_user_by_id(event["user"]))
         _handle_event(processed_event)
 
     @app.event("reaction_removed")
     def handle_reaction_removed_event(event):
         processed_event = dict(
-            **event.items(),
+            **event,
             user_data=get_user_by_id(event["user"]))
         _handle_event(processed_event)
 
