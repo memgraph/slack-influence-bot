@@ -129,7 +129,7 @@ python3 slack_history.py events -n=100 > events.json
 
 # For every slack historical event, forward it to the Kafka so Memgraph can fetch it
 # and update the graph model
-cat events.json | python3 utils/kafka_json_producer.json slack-events
+cat events.json | python3 utils/kafka_json_producer.py slack-events
 ```
 
 ## Events
@@ -141,7 +141,7 @@ Notes:
 * If the `channel_type == 'channel'`, it is a message in a public channel.
 * If the `channel_type == 'group'`, it is a message in a private channel.
 * If the `channel_type == 'message_changed'`, the message content updated.
-* If there is a key `thread_ts' it is a thread message where the value is
+* If there is a key `thread_ts`, it is a thread message where the value is
   the source message on which the thread is created.
 
 Example:
