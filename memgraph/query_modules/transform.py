@@ -8,8 +8,8 @@ def get_message_queries(payload):
     total_words = sum(counter.values())
 
     query = """
-    MERGE (c:Channel { uuid: $channel_uuid })
-    MERGE (u:User { uuid: $user_uuid })
+    MERGE (c:Channel { uuid: $channel_uuid, name: $channel_name })
+    MERGE (u:User { uuid: $user_uuid, name: $user_name, image: $user_image })
     CREATE (u)-[:POSTED]->(:Message { uuid: $msg_uuid, text: $text, total_words: $total_words })-[:IN]->(c);
     """
 
@@ -17,7 +17,10 @@ def get_message_queries(payload):
         query=query,
         parameters={
             "channel_uuid": payload["channel"],
+            "channel_name": payload.get("channel_data", {}).get("name", ""),
             "user_uuid": payload["user"],
+            "user_name": payload.get("user_data", {}).get("name", ""),
+            "user_image": payload.get("user_data", {}).get("profile", {}).get("image", ""),
             "msg_uuid": payload["ts"],
             "text": payload["text"],
             "total_words": total_words
@@ -42,7 +45,7 @@ def get_message_queries(payload):
 def get_reaction_added_queries(payload):
     query = """
     MATCH (m:Message { uuid: $msg_uuid })
-    MERGE (u:User { uuid: $user_uuid })
+    MERGE (u:User { uuid: $user_uuid, name: $user_name, image: $user_image })
     CREATE (u)-[:REACTED_ON { reaction: $reaction }]->(m);
     """
 
@@ -51,6 +54,8 @@ def get_reaction_added_queries(payload):
         parameters={
             "msg_uuid": payload["item"]["ts"],
             "user_uuid": payload["user"],
+            "user_name": payload.get("user_data", {}).get("name", ""),
+            "user_image": payload.get("user_data", {}).get("profile", {}).get("image", ""),
             "reaction": payload["reaction"]
         })
 
@@ -72,7 +77,7 @@ def get_reaction_removed_queries(payload):
 
 def is_message_payload(payload):
     channel_type = payload.get("channel_type") or ""
-    return payload["type"] == "message" and channel_type in {"channel", "group", ""}
+    return payload["type"] == "message" and not message.get("subtype") and channel_type in {"channel", "group", ""}
 
 
 def get_queries(payload):

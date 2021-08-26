@@ -26,6 +26,7 @@ import json
 import time
 from typing import Dict, Any
 from slack_sdk import WebClient
+from functools import lru_cache
 
 slack_client = WebClient(os.environ["SLACK_BOT_TOKEN"])
 
@@ -43,37 +44,63 @@ def _wrap_rate_limit(func, *args, **kwargs):
         return func(*args, **kwargs)
 
 
+@lru_cache(maxsize=None)
 def get_channels():
+    channels = []
     response = slack_client.conversations_list(types="public_channel,private_channel")
     for channel in response["channels"]:
         if channel["is_member"]:
-            yield {
+            channels.append({
                 "id" : channel["id"],
                 "name" : channel["name"],
                 "is_private": channel["is_private"]
-            }
+            })
+    return channels
 
 
+@lru_cache(maxsize=None)
+def get_channel_by_id(channel_id: str):
+    return next((channel for channel in get_channels() if channel["id"] == channel_id), None)
+
+
+@lru_cache(maxsize=None)
 def get_users():
+    users = []
     response = slack_client.users_list()
     for user in response["members"]:
-        yield {
+        users.append({
             "id" : user["id"],
             "name" : user["name"],
             "real_name": user.get("real_name"),
             "profile": {
-                "image_original": user["profile"].get("image_original"),
-                "real_name": user["profile"].get("real_name"),
-                "image_72": user["profile"].get("image_72"),
+                "image": user["profile"].get("image_72"),
             }
-        }
+        })
+    return users
+
+
+@lru_cache(maxsize=None)
+def get_user_by_id(user_id: str):
+    return next((user for user in get_users() if user["id"] == user_id), None)
 
 
 def get_channel_events(channel_id: str, limit: int):
+    viewed_message_ids = set()
     response_messages = _wrap_rate_limit(slack_client.conversations_history, channel=channel_id, limit=limit)
     for message in response_messages["messages"]:
+        message_id = message["ts"]
+
         if not message.get("user"):
             continue
+
+        # Regular messages do not have "subtype"!
+        if message.get("subtype"):
+            continue
+
+        # Slack sometimes returns duplicate messages from API (mostly edited)
+        if message_id in viewed_message_ids:
+            continue
+        viewed_message_ids.add(message_id)
 
         yield _get_message_event(channel_id, message)
         yield from _get_reaction_events(channel_id, message)
@@ -81,9 +108,12 @@ def get_channel_events(channel_id: str, limit: int):
         if message.get("reply_count", 0) > 0:
             response_replies = _wrap_rate_limit(slack_client.conversations_replies,
                 channel=channel_id,
-                ts=message["ts"],
+                ts=message_id,
                 limit=limit)
             for reply in response_replies["messages"]:
+                if reply["ts"] in viewed_message_ids:
+                    continue
+                viewed_message_ids.add(reply["ts"])
                 yield _get_message_event(channel_id, reply, is_thread=True)
 
 
@@ -91,14 +121,12 @@ def _get_message_event(channel_id: str, message, is_thread=False):
     event = {
         "type": "message",
         "channel": channel_id,
+        "channel_data": get_channel_by_id(channel_id),
         "user": message["user"],
+        "user_data": get_user_by_id(message["user"]),
         "text": message["text"],
         "ts": message["ts"]
     }
-
-    # Regular messages do not have "subtype"!
-    if message.get("subtype"):
-        event["subtype"] = message["subtype"]
 
     # Replies will have "thread_ts"
     if is_thread and message.get("thread_ts"):
@@ -113,6 +141,7 @@ def _get_reaction_events(channel_id: str, message):
             yield {
                 "type": "reaction_added",
                 "user": user_id,
+                "user_data": get_user_by_id(user_id),
                 "reaction": reaction["name"],
                 "item": {
                     "type": "message",

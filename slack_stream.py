@@ -33,6 +33,7 @@ from slack_bolt import App
 from gqlalchemy import Memgraph
 from kafka import KafkaProducer
 from slack_bolt.adapter.socket_mode import SocketModeHandler
+from slack_history import get_channel_by_id, get_user_by_id
 
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s]: %(message)s")
 logger = logging.getLogger("slack_bot")
@@ -111,15 +112,25 @@ def _get_slack_app(bot_token: str, memgraph, event_handler=None):
 
     @app.event("message")
     def handle_message_event(event):
-        _handle_event(event)
+        processed_event = dict(
+            **event.items(),
+            channel_data=get_channel_by_id(event["channel"]),
+            user_data=get_user_by_id(event["user"]))
+        _handle_event(processed_event)
 
     @app.event("reaction_added")
     def handle_reaction_added_event(event):
-        _handle_event(event)
+        processed_event = dict(
+            **event.items(),
+            user_data=get_user_by_id(event["user"]))
+        _handle_event(processed_event)
 
     @app.event("reaction_removed")
     def handle_reaction_removed_event(event):
-        _handle_event(event)
+        processed_event = dict(
+            **event.items(),
+            user_data=get_user_by_id(event["user"]))
+        _handle_event(processed_event)
 
     return app
 
