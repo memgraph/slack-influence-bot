@@ -1,7 +1,10 @@
 import mgp
 import json
 from tokenizer import tokenize_text
+from datetime import datetime
 
+def slack_timestamp_to_iso_date(timestamp):
+    return datetime.utcfromtimestamp(float(timestamp)).isoformat()
 
 def get_message_queries(payload):
     counter = tokenize_text(payload["text"])
@@ -10,7 +13,7 @@ def get_message_queries(payload):
     query = """
     MERGE (c:Channel { uuid: $channel_uuid, name: $channel_name })
     MERGE (u:User { uuid: $user_uuid, name: $user_name, image: $user_image })
-    CREATE (u)-[:POSTED]->(:Message { uuid: $msg_uuid, text: $text, total_words: $total_words })-[:IN]->(c);
+    CREATE (u)-[:POSTED]->(:Message { uuid: $msg_uuid, text: $text, total_words: $total_words, created_at: $created_at })-[:IN]->(c);
     """
 
     channel_data = payload.get("channel_data") or dict()
@@ -27,6 +30,7 @@ def get_message_queries(payload):
             "user_image": user_profile.get("image", ""),
             "msg_uuid": payload["ts"],
             "text": payload["text"],
+            "created_at": slack_timestamp_to_iso_date(payload["ts"]),
             "total_words": total_words
         })
 

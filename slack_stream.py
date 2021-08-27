@@ -73,13 +73,40 @@ def get_user_id_from_slack_message(message: str):
 
 
 def _get_message_influence_text(memgraph, event):
+    channel_id = event["channel_id"]
     message = event["text"]
+    message_escaped = re.sub(r'"', '\\"', message)
+
     # TODO: Call the recommender here
     results = memgraph.execute_and_fetch(f"""
-        CALL tokenizer.tokenize("{message}") YIELD *;
-    """)
+        CALL tokenizer.tokenize("{message_escaped}") YIELD word
+        WITH collect(word) as start_word_values
 
-    return f"You want me to influence this? {list(results)}\n\n_Your original message:_\n{message}"
+        MATCH (c:Channel)<--(m:Message)<-[r:REACTED_ON]-()
+        WHERE c.uuid = '{channel_id}'
+        WITH DISTINCT m, count(r) as reactions, start_word_values
+        WITH avg(reactions) as avg_reactions, start_word_values
+
+        MATCH (w:Word)<--(m:Message)-->(c:Channel)
+        WHERE w.value IN start_word_values AND c.uuid = '{channel_id}'
+        WITH DISTINCT m, start_word_values, avg_reactions
+
+        MATCH (m:Message)-[c]->(w:Word)
+        WHERE w.value IN start_word_values
+        WITH m, collect(w) as old_words, start_word_values, avg_reactions
+
+        MATCH (m:Message)<-[r:REACTED_ON]-()
+        WITH m, count(r) as rating, old_words, start_word_values, avg_reactions
+
+        MATCH (m:Message)-[c]->(w:Word)
+        WHERE NOT w.value IN start_word_values
+        WITH w, m, rating, old_words, start_word_values, avg_reactions
+        RETURN DISTINCT w.value as word, sum(rating) as score, count(m) as messages, avg_reactions
+        ORDER BY score DESC
+    """)
+    words = [f"`{result['word']}`" for word in list(results)][:5]
+
+    return f"You want me to influence this? {', '.join(words)}\n\n_Your original message:_\n{message}"
 
 
 def _get_channel_influence_text(memgraph, event):
@@ -151,7 +178,7 @@ def _get_slack_app(bot_token: str, memgraph, event_handler=None):
                 text = _get_relationship_influence_text(memgraph, event)
         except Exception as e:
             logger.error(e)
-            text = "Not good, not good. I think I am not a bot any more, I am Bug bot - a bot with a bug."
+            text = "Something went wrong. Not good, not good. I think I am not a bot anymore, I am a huge pile of bugs."
 
         app.client.chat_postEphemeral(
             channel=event["channel_id"],
