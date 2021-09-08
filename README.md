@@ -51,7 +51,7 @@ Follow the steps below to create the bot, setup scopes and get the tokens:
 7. Add the bot to all the public channels that you want to handle with the project
 8. Once you have two tokens, feel free to save them locally in the `.env` file
    in the following format:
-   
+
 ```
 export SLACK_BOT_TOKEN=xoxb-...
 export SLACK_APP_TOKEN=xapp-...

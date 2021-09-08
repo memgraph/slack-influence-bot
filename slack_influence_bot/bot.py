@@ -2,7 +2,6 @@ import re
 import json
 import random
 from typing import Optional
-from functools import lru_cache
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_influence_bot.interfaces import EventHandler, GraphHandler
@@ -24,38 +23,68 @@ class SlackInfluenceBot:
         self.slack_bot_token = slack_bot_token
         self.slack_app_token = slack_app_token
         self.app = App(token=slack_bot_token)
+        self.cached_channels = None
+        self.cached_users = None
 
-    @lru_cache(maxsize=None)
-    def get_channels(self):
+    def refresh_channels(self):
+        self.get_channels(use_cache=False)
+
+    def get_channels(self, use_cache: bool = True):
+        if use_cache and self.cached_channels:
+            return self.cached_channels
+
         channels = []
-        response = self.app.client.conversations_list(types="public_channel,private_channel")
-        for channel in response["channels"]:
-            if channel["is_member"]:
-                channels.append({"id": channel["id"], "name": channel["name"], "is_private": channel["is_private"]})
+        cursor = ""
+        while True:
+            response = self.app.client.conversations_list(
+                types="public_channel,private_channel", exclude_archived=True, cursor=cursor
+            )
+            cursor = response.get("response_metadata", {}).get("next_cursor")
+
+            for channel in response["channels"]:
+                if channel["is_member"]:
+                    channels.append({"id": channel["id"], "name": channel["name"], "is_private": channel["is_private"]})
+
+            if not cursor:
+                break
+
+        self.cached_channels = channels
         return channels
 
-    @lru_cache(maxsize=None)
     def get_channel_by_id(self, channel_id: str):
         return next((channel for channel in self.get_channels() if channel["id"] == channel_id), None)
 
-    @lru_cache(maxsize=None)
-    def get_users(self):
+    def refresh_users(self):
+        self.get_users(use_cache=False)
+
+    def get_users(self, use_cache: bool = True):
+        if use_cache and self.cached_users:
+            return self.cached_users
+
         users = []
-        response = self.app.client.users_list()
-        for user in response["members"]:
-            users.append(
-                {
-                    "id": user["id"],
-                    "name": user["name"],
-                    "real_name": user.get("real_name"),
-                    "profile": {
-                        "image": user["profile"].get("image_72"),
-                    },
-                }
-            )
+        cursor = ""
+        while True:
+            response = self.app.client.users_list(cursor=cursor)
+            cursor = response.get("response_metadata", {}).get("next_cursor")
+
+            for user in response["members"]:
+                users.append(
+                    {
+                        "id": user["id"],
+                        "name": user["name"],
+                        "real_name": user.get("real_name"),
+                        "profile": {
+                            "image": user["profile"].get("image_72"),
+                        },
+                    }
+                )
+
+            if not cursor:
+                break
+
+        self.cached_users = users
         return users
 
-    @lru_cache(maxsize=None)
     def get_user_by_id(self, user_id: str):
         return next((user for user in self.get_users() if user["id"] == user_id), None)
 
@@ -269,12 +298,20 @@ class SlackInfluenceBot:
         @self.app.event("member_joined_channel")
         def handle_channel_joined_event(event):
             logger.info(f"New event: {json.dumps(event)}")
+            channel_id = event.get("channel")
+            is_channel = event.get("channel_type") == "C"
+            if not channel_id or not is_channel:
+                logger.info(f"Skipped event because it is not a channel: {json.dumps(event)}")
+                return
 
-            # TODO: Add channel.joined!
+            # Refresh the channels cache (if it is a new channel)
+            self.refresh_channels()
 
-        #             if handler:
-        #                 for event in self.get_channel_history_events(channel_id):
-        #                     handler.handle_event(event)
+            events_count = 0
+            for event in self.get_channel_history_events(channel_id):
+                handler.handle_event(event)
+                events_count += 1
+            logger.info(f"Loaded {events_count} historical message and reaction events from the new channel {channel_id}")
 
         @self.app.event("message")
         def handle_message_event(event):

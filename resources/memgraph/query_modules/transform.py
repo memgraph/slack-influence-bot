@@ -33,7 +33,7 @@ def get_message_queries(payload):
         query=query,
         parameters={
             "channel_uuid": payload["channel"],
-            "channel_name": channel_data.get("name", "(private)"),
+            "channel_name": channel_data.get("name", "(unknown)"),
             "user_uuid": payload["user"],
             "user_name": user_data.get("name", ""),
             "user_image": user_profile.get("image", ""),
