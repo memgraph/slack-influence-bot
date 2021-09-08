@@ -44,7 +44,7 @@ services:
 
   memgraph:
     image: memgraph/memgraph-nlp
-    build: memgraph
+    build: resources/memgraph
     entrypoint:
       - "/usr/lib/memgraph/memgraph"
       - "--kafka-bootstrap-servers=kafka:9094"

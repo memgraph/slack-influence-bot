@@ -3,12 +3,21 @@ import json
 from tokenizer import tokenize_text
 from datetime import datetime
 
+
 def slack_timestamp_to_iso_date(timestamp):
     return datetime.utcfromtimestamp(float(timestamp)).isoformat()
+
 
 def get_message_queries(payload):
     counter = tokenize_text(payload["text"])
     total_words = sum(counter.values())
+
+    # In order to handle duplicate message, we will remove the message
+    # if it already exists with the same message ID
+    yield mgp.Record(
+        query="MATCH (m:Message { uuid: $msg_uuid }) DETACH DELETE m",
+        parameters={"msg_uuid": payload["ts"]},
+    )
 
     query = """
     MERGE (c:Channel { uuid: $channel_uuid, name: $channel_name })
@@ -31,8 +40,9 @@ def get_message_queries(payload):
             "msg_uuid": payload["ts"],
             "text": payload["text"],
             "created_at": slack_timestamp_to_iso_date(payload["ts"]),
-            "total_words": total_words
-        })
+            "total_words": total_words,
+        },
+    )
 
     for word, count in counter.items():
         word_query = """
@@ -42,19 +52,15 @@ def get_message_queries(payload):
         """
         yield mgp.Record(
             query=word_query,
-            parameters={
-                "msg_uuid": payload["ts"],
-                "value": word,
-                "count": count,
-                "freq": count / total_words
-            })
+            parameters={"msg_uuid": payload["ts"], "value": word, "count": count, "freq": count / total_words},
+        )
 
 
 def get_reaction_added_queries(payload):
     query = """
     MATCH (m:Message { uuid: $msg_uuid })
     MERGE (u:User { uuid: $user_uuid, name: $user_name, image: $user_image })
-    CREATE (u)-[:REACTED_ON { reaction: $reaction }]->(m);
+    MERGE (u)-[:REACTED_ON { reaction: $reaction }]->(m);
     """
 
     user_data = payload.get("user_data") or dict()
@@ -67,8 +73,9 @@ def get_reaction_added_queries(payload):
             "user_uuid": payload["user"],
             "user_name": user_data.get("name", ""),
             "user_image": user_profile.get("image", ""),
-            "reaction": payload["reaction"]
-        })
+            "reaction": payload["reaction"],
+        },
+    )
 
 
 def get_reaction_removed_queries(payload):
@@ -79,11 +86,8 @@ def get_reaction_removed_queries(payload):
 
     yield mgp.Record(
         query=query,
-        parameters={
-            "msg_uuid": payload["item"]["ts"],
-            "user_uuid": payload["user"],
-            "reaction": payload["reaction"]
-        })
+        parameters={"msg_uuid": payload["item"]["ts"], "user_uuid": payload["user"], "reaction": payload["reaction"]},
+    )
 
 
 def is_message_payload(payload):

@@ -1,6 +1,6 @@
-# Entropy-crusade
+# Slack Influence Bot
 
-Changing the way of how influence is created in Slack.
+Slack bot that helps you understand and influence your slack community.
 
 * [Requirements](#requirements)
 * [Quick start](#quick-start)
@@ -28,26 +28,27 @@ Follow the steps below to create the bot, setup scopes and get the tokens:
    with a scope `connections:write`.
 3. Under **Socket Mode** make sure to enable the socket mode.
 4. Under **Slash Commands** create the following commands:
-    * TBD
-    * TBD
+    * Name: `/influence`
+    * Short description: `Influence the community`
+    * Usage hint: `[help | me | channel | message]`
+    * Escape channels, users, and links sent to your app: `Checked!`
 5. Under **OAuth & Permissions* generate a **Bot User OAuth Token** and add the
    following scopes to "Bot Token Scopes":
     * `app_mentions:read`
     * `channels:history`, `channels:read`
+    * `groups:history`, `groups:read`
+    * `users:read`, `users.profile:read`
     * `chat:write`
     * `commands`
-    * `groups:history`, `groups:read`
-    * `im:history`, `im:read`
     * `reactions:read`
-    * `users:read`, `users.profile:read`
 6. Under **Event Subscriptions** make sure to enable Events and to select the
    following events for "Subscribe to bot events":
    * `message.channels`
    * `message.groups`
    * `reaction_added`
    * `reaction_removed`
-7. Add the bot to all the public/private channels that you want to handle with
-   the project
+   * `member_joined_channel`
+7. Add the bot to all the public channels that you want to handle with the project
 8. Once you have two tokens, feel free to save them locally in the `.env` file
    in the following format:
    
@@ -130,99 +131,4 @@ python3 slack_history.py events -n=100 > events.json
 # For every slack historical event, forward it to the Kafka so Memgraph can fetch it
 # and update the graph model
 cat events.json | python3 utils/kafka_json_producer.py slack-events
-```
-
-## Events
-
-### New message
-
-Notes:
-
-* If the `channel_type == 'channel'`, it is a message in a public channel.
-* If the `channel_type == 'group'`, it is a message in a private channel.
-* If the `channel_type == 'message_changed'`, the message content updated.
-* If there is a key `thread_ts`, it is a thread message where the value is
-  the source message on which the thread is created.
-
-Example:
-
-```json
-{
-  "client_msg_id": "400df46e-1111-2222-3333-44ff33555444",
-  "type": "message",
-  "text": "It is a message",
-  "user": "U022Q0ZERT2",
-  "ts": "1629885191.020400",
-  "team": "T0F242E3B",
-  "thread_ts": "1629881871.018500",
-  "parent_user_id": "U022Q0ZERT2",
-  "channel": "CSR01RS80",
-  "event_ts": "1629885191.020400",
-  "channel_type": "channel",
-  "blocks": [
-    {
-      "type": "rich_text",
-      "block_id": "mfD",
-      "elements": [
-        {
-          "type": "rich_text_section",
-          "elements": [
-            {
-              "type": "text",
-              "text": "It is a message"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Reaction added
-
-Notes:
-
-* The value of `item.ts` is a timestamp of a message where the user
-  added a reaction.
-
-Example:
-
-```json
-{
-  "type": "reaction_added",
-  "user": "U12345678",
-  "item": {
-    "type": "message",
-    "channel": "C12345678",
-    "ts": "1629742385.001000"
-  },
-  "reaction": "wink",
-  "item_user": "U12345678",
-  "event_ts": "1629884735.000100"
-}
-```
-
-### Reaction removed
-
-Notes:
-
-* The value of `item.ts` is a timestamp of a message where the user
-  removed a reaction.
-
-Example:
-
-```json
-{
-  "type": "reaction_removed",
-  "user": "U12345678",
-  "item": {
-    "type": "message",
-    "channel": "C12345678",
-    "ts": "1629742385.001000"
-  },
-  "reaction": "wink",
-  "item_user": "U12345678",
-  "event_ts": "1629884735.000100"
-}
 ```

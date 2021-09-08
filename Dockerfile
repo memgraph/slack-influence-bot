@@ -6,11 +6,19 @@ ENV PYTHONDONTWRITEBYTECODE 1
 # Turns off buffering for easier container logging
 ENV PYTHONUNBUFFERED 1
 
+# Install cmake to build pymgclient (used in gqlalchemy)
 RUN apt-get update && \
     apt-get --yes install cmake
 
+# Install poetry
+RUN pip install -U pip \
+    && curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+ENV PATH="${PATH}:/root/.poetry/bin"
+
 WORKDIR /app
 COPY . .
-RUN python3 -m pip install -r requirements.txt
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi
 
-CMD ["python3", "slack_stream.py"]
+ENTRYPOINT [ "poetry", "run" ]
+CMD ["python3", "-m", "main"]

@@ -28,11 +28,12 @@ def main(args: Dict[str, Any]):
 
     consumer = KafkaConsumer(
         args["KAFKA_TOPIC"],
-        auto_offset_reset='earliest',
+        auto_offset_reset="earliest",
         enable_auto_commit=True,
         group_id=args.get("KAFKA_GROUP") or "default-group",
-        value_deserializer=lambda v: json.loads(v.decode('utf-8')),
-        bootstrap_servers=[server.strip() for server in kafka_servers.split(',')])
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        bootstrap_servers=[server.strip() for server in kafka_servers.split(",")],
+    )
 
     for message in consumer:
         print(message.value)
@@ -40,4 +41,5 @@ def main(args: Dict[str, Any]):
 
 if __name__ == "__main__":
     from docopt import docopt
+
     main(docopt(__doc__))

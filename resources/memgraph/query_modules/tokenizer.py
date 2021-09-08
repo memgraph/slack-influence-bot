@@ -23,23 +23,23 @@ from collections import Counter
 
 nlp = spacy.load("en_core_web_sm")
 
-VALID_POS_TAGS = {'NOUN', 'VERB', 'PROPN', 'ADJ', 'ADV', 'INTJ'}
+VALID_POS_TAGS = {"NOUN", "VERB", "PROPN", "ADJ", "ADV", "INTJ"}
+
 
 # Thanks to https://realpython.com/natural-language-processing-spacy-python/
 def is_token_allowed(token) -> bool:
-    return token \
-        and not token.is_stop \
-        and not token.is_punct \
-        and token.pos_ in VALID_POS_TAGS \
-        and token.is_alpha
+    return token and not token.is_stop and not token.is_punct and token.pos_ in VALID_POS_TAGS and token.is_alpha
+
 
 def preprocess_token(token) -> str:
     return token.lemma_.strip().lower()
+
 
 def tokenize_text(text: str) -> Counter:
     doc = nlp(text)
     words = (preprocess_token(token) for token in doc if is_token_allowed(token))
     return Counter(words)
+
 
 @mgp.read_proc
 def tokenize(context: mgp.ProcCtx, text: mgp.Nullable[str]) -> mgp.Record(word=str, count=int):

@@ -34,7 +34,7 @@ def is_valid_json(line: str) -> bool:
     try:
         json.loads(line)
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -42,9 +42,10 @@ def main(args: Dict[str, Any]):
     kafka_servers = args.get("KAFKA_SERVERS") or "localhost:9092"
 
     producer = KafkaProducer(
-       value_serializer=lambda v: v.encode('utf-8'),
-       bootstrap_servers=[server.strip() for server in kafka_servers.split(',')],
-       linger_ms=DEFAULT_KAFKA_PRODUCER_BATCH_WAIT_MS)
+        value_serializer=lambda v: v.encode("utf-8"),
+        bootstrap_servers=[server.strip() for server in kafka_servers.split(",")],
+        linger_ms=DEFAULT_KAFKA_PRODUCER_BATCH_WAIT_MS,
+    )
 
     for line in sys.stdin:
         trim_line = line.strip()
@@ -63,4 +64,5 @@ def main(args: Dict[str, Any]):
 
 if __name__ == "__main__":
     from docopt import docopt
+
     main(docopt(__doc__))
