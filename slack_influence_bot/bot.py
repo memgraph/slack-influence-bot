@@ -237,7 +237,7 @@ class SlackInfluenceBot:
             """Text response for /influence message [MESSAGE]"""
             message = event["text"]
             channel_id = event["channel_id"]
-            user_message = re.sub(r"^\s+message\s+", "", message, flags=re.IGNORECASE)
+            user_message = re.sub(r"^\s*message\s+", "", message, flags=re.IGNORECASE)
 
             channel = self.get_channel_by_id(channel_id)
             if not channel:
