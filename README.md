@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/memgraph/slack-influence-bot/LICENSE">
+  <a href="https://github.com/memgraph/slack-influence-bot/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/memgraph/slack-influence-bot" alt="license" title="license"/>
   </a>
   <a href="https://github.com/memgraph/slack-influence-bot">
