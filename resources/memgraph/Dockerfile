@@ -1,4 +1,4 @@
-FROM memgraph/memgraph-mage:latest
+FROM memgraph/memgraph-mage:1.01-dev
 
 USER root
 

@@ -27,7 +27,7 @@ class MemgraphHandler(GraphHandler):
             logger.info(f"Creating new stream {stream_name} for topic {topic_name}")
             self.client.execute(
                 f"""
-                CREATE STREAM {stream_name}
+                CREATE KAFKA STREAM {stream_name}
                 TOPICS {topic_name}
                 TRANSFORM transform.transformation
                 BATCH_INTERVAL 100 BATCH_SIZE 10
