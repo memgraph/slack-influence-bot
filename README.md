@@ -168,11 +168,18 @@ N messages (including reactions and thread replies) from channels:
 ```
 # Get 100 messages (with threads and reactions) from public/private channels where
 # bot is member of and forward it to the local file `events.json`
-python3 slack_history.py events -n=100 > events.json
+python main.py history --message-count=100 > history-messages.json
+
+# Or even do that at the application startup
+python3 main.py --history-message-count=100
+
+# If you wanna see all available commands, just run
+python3 main.py --help
 
 # For every slack historical event, forward it to the Kafka so Memgraph can fetch it
 # and update the graph model
-cat events.json | python3 utils/kafka_json_producer.py slack-events
+cat events.json | python3 scripts/kafka_json_producer.py slack-events
+
 ```
 
 ## ❔ Find out more about Memgraph
