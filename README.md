@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/memgraph/slack-influence-bot">
-    <img src="https://public-assets.memgraph.com/slack-influence-bot/slack-app-01.png" 
+    <img src="img/slack-app-01.png" 
          alt="reddit-network-explorer" 
          title="reddit-network-explorer"
          style="width: 80%"/>
